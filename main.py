@@ -139,6 +139,13 @@ def main():
                 if random.random() < cfg.RABBIT_REPLICATION_PROB_PER_FRAME:
                     new_rabbits.append(Rabbit(rabbit.pos[0], rabbit.pos[1]))
         
+        # --- Natural Fox Death (Time-based) ---
+        foxes_to_remove_natural = set()
+        if cfg.FOX_DEATH_PROB_PER_FRAME > 0:
+            for fox in foxes:
+                if random.random() < cfg.FOX_DEATH_PROB_PER_FRAME:
+                    foxes_to_remove_natural.add(fox)
+
         # --- Collision Detection (Foxes vs Rabbits) ---
         new_foxes = []
         rabbits_to_remove = set()
@@ -158,6 +165,8 @@ def main():
         # --- Update Agent Lists ---
         if rabbits_to_remove:
             rabbits = [rabbit for rabbit in rabbits if rabbit not in rabbits_to_remove]
+        if foxes_to_remove_natural:
+            foxes = [fox for fox in foxes if fox not in foxes_to_remove_natural]
         if new_rabbits:
             rabbits.extend(new_rabbits)
         if new_foxes:
