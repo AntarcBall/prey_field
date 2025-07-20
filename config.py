@@ -7,6 +7,7 @@ FIELD_COLOR = (20, 20, 20)  # Dark Grey
 
 # --- Simulation Parameters ---
 FPS = 60
+MAX_AGENTS = 5000  # Maximum number of agents allowed in the simulation
 
 # --- Agent Initial Parameters ---
 INITIAL_FOXES = 60
