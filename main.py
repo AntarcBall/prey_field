@@ -1,6 +1,7 @@
 import pygame
 import numpy as np
 import sys
+import os
 from PyQt5.QtWidgets import QApplication
 import pyqtgraph as pg
 from config import sim_cfg
@@ -10,6 +11,7 @@ AGENT_TYPE_RABBIT = 0
 AGENT_TYPE_FOX = 1
 
 # --- Pygame Setup ---
+os.environ['SDL_VIDEO_WINDOW_POS'] = f"0,0"
 pygame.init()
 screen = pygame.display.set_mode((sim_cfg.FIELD_WIDTH, sim_cfg.FIELD_HEIGHT))
 pygame.display.set_caption("Optimized Killing Field Simulation")
@@ -20,6 +22,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 win = pg.GraphicsLayoutWidget(show=True, title="Population over Time")
 win.resize(800, 400)
 win.setWindowTitle('Population Dynamics')
+win.move(sim_cfg.FIELD_WIDTH, 0) # Position next to Pygame window
 pg.setConfigOptions(antialias=True)
 
 plot = win.addPlot(title="Population")
@@ -208,21 +211,22 @@ def main():
         pygame.display.flip()
 
         # --- Data Update for Plot ---
-        current_time = pygame.time.get_ticks()
-        if current_time - last_plot_update > 250:
-            elapsed_time_sec = (current_time - start_time) / 1000.0
-            time_points.append(elapsed_time_sec)
-            
-            active_agents = agents[:num_agents]
-            num_foxes = np.sum(active_agents[:, 4] == AGENT_TYPE_FOX)
-            num_rabbits = num_agents - num_foxes
-            
-            fox_counts.append(num_foxes)
-            rabbit_counts.append(num_rabbits)
-            
-            fox_curve.setData(time_points, fox_counts)
-            rabbit_curve.setData(time_points, rabbit_counts)
-            last_plot_update = current_time
+        if simulation_active:
+            current_time = pygame.time.get_ticks()
+            if current_time - last_plot_update > 250:
+                elapsed_time_sec = (current_time - start_time) / 1000.0
+                time_points.append(elapsed_time_sec)
+                
+                active_agents = agents[:num_agents]
+                num_foxes = np.sum(active_agents[:, 4] == AGENT_TYPE_FOX)
+                num_rabbits = num_agents - num_foxes
+                
+                fox_counts.append(num_foxes)
+                rabbit_counts.append(num_rabbits)
+                
+                fox_curve.setData(time_points, fox_counts)
+                rabbit_curve.setData(time_points, rabbit_counts)
+                last_plot_update = current_time
 
         # --- Tick ---
         clock.tick(sim_cfg.FPS)
