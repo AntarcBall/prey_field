@@ -5,7 +5,8 @@ import os
 import csv
 from PyQt5.QtWidgets import QApplication
 import pyqtgraph as pg
-from config import sim_cfg, SimConfig
+from config import sim_cfg, Config
+from utils.logger import setup_signal_handlers, log_shutdown
 
 # --- Constants ---
 AGENT_TYPE_RABBIT = 0
@@ -14,22 +15,46 @@ AGENT_TYPE_FOX = 1
 # --- Simulation Logging ---
 LOG_FILE = "simulation_log.csv"
 
-def log_simulation_data(duration: float, config: SimConfig):
+def log_simulation_data(duration: float, config: Config):
     """Logs simulation duration and configuration parameters to a CSV file."""
     fieldnames = []
     row_data = {}
 
-    # Get all parameters from the SimConfig dataclass
-    for field_name in config.__dataclass_fields__:
-        # Exclude derived fields that are not initialized directly
-        if config.__dataclass_fields__[field_name].init:
-            fieldnames.append(field_name)
-            value = getattr(config, field_name)
-            if isinstance(value, np.ndarray):
-                row_data[field_name] = str(value.tolist())
-            else:
-                row_data[field_name] = value
-    
+    # Manually get all parameters from the nested classes
+    # Field parameters
+    fieldnames.extend(['field.width', 'field.height', 'field.color'])
+    row_data['field.width'] = config.field.width
+    row_data['field.height'] = config.field.height
+    row_data['field.color'] = str(config.field.color)
+
+    # Simulation parameters
+    fieldnames.extend(['simulation.fps', 'simulation.max_agents'])
+    row_data['simulation.fps'] = config.simulation.fps
+    row_data['simulation.max_agents'] = config.simulation.max_agents
+
+    # Agent parameters
+    fieldnames.extend(['agent.initial_foxes', 'agent.initial_rabbits', 'agent.speed_pixels_per_sec', 'agent.speed_per_frame'])
+    row_data['agent.initial_foxes'] = config.agent.initial_foxes
+    row_data['agent.initial_rabbits'] = config.agent.initial_rabbits
+    row_data['agent.speed_pixels_per_sec'] = config.agent.speed_pixels_per_sec
+    row_data['agent.speed_per_frame'] = config.agent.speed_per_frame
+
+    # Fox parameters
+    fieldnames.extend(['fox.replication_mean', 'fox.replication_sigma', 'fox.replication_range', 'fox.death_prob_per_frame'])
+    row_data['fox.replication_mean'] = config.fox.replication_mean
+    row_data['fox.replication_sigma'] = config.fox.replication_sigma
+    row_data['fox.replication_range'] = str(config.fox.replication_range.tolist())
+    row_data['fox.death_prob_per_frame'] = config.fox.death_prob_per_frame
+
+    # Rabbit parameters
+    fieldnames.extend(['rabbit.replication_rate_per_min', 'rabbit.replication_prob_per_frame'])
+    row_data['rabbit.replication_rate_per_min'] = config.rabbit.replication_rate_per_min
+    row_data['rabbit.replication_prob_per_frame'] = config.rabbit.replication_prob_per_frame
+
+    # Collision parameters
+    fieldnames.extend(['collision.distance'])
+    row_data['collision.distance'] = config.collision.distance
+
     fieldnames.append("duration_seconds")
     row_data["duration_seconds"] = duration
 
@@ -50,7 +75,7 @@ AGENT_TYPE_FOX = 1
 # --- Pygame Setup ---
 os.environ['SDL_VIDEO_WINDOW_POS'] = f"0,0"
 pygame.init()
-screen = pygame.display.set_mode((sim_cfg.FIELD_WIDTH, sim_cfg.FIELD_HEIGHT))
+screen = pygame.display.set_mode((sim_cfg.field.width, sim_cfg.field.height))
 pygame.display.set_caption("Optimized Killing Field Simulation")
 clock = pygame.time.Clock()
 
@@ -59,7 +84,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 win = pg.GraphicsLayoutWidget(show=True, title="Population over Time")
 win.resize(800, 400)
 win.setWindowTitle('Population Dynamics')
-win.move(sim_cfg.FIELD_WIDTH, 0) # Position next to Pygame window
+win.move(sim_cfg.field.width, 0) # Position next to Pygame window
 pg.setConfigOptions(antialias=True)
 
 plot = win.addPlot(title="Population")
@@ -75,21 +100,21 @@ rabbit_counts = []
 
 # --- Agent Data (NumPy Array) ---
 # [pos_x, pos_y, vel_x, vel_y, type, active]
-agents = np.zeros((sim_cfg.MAX_AGENTS, 6), dtype=np.float32)
+agents = np.zeros((sim_cfg.simulation.max_agents, 6), dtype=np.float32)
 num_agents = 0
 
 # --- Simulation Functions ---
 def add_agent(agent_type, x, y):
     """Adds a new agent to the simulation."""
     global num_agents
-    if num_agents >= sim_cfg.MAX_AGENTS:
+    if num_agents >= sim_cfg.simulation.max_agents:
         return
 
     agents[num_agents, 0] = x
     agents[num_agents, 1] = y
     angle = np.random.uniform(0, 2 * np.pi)
-    agents[num_agents, 2] = np.cos(angle) * sim_cfg.AGENT_SPEED_PER_FRAME
-    agents[num_agents, 3] = np.sin(angle) * sim_cfg.AGENT_SPEED_PER_FRAME
+    agents[num_agents, 2] = np.cos(angle) * sim_cfg.agent.speed_per_frame
+    agents[num_agents, 3] = np.sin(angle) * sim_cfg.agent.speed_per_frame
     agents[num_agents, 4] = agent_type
     agents[num_agents, 5] = 1  # Active
     num_agents += 1
@@ -107,19 +132,19 @@ def get_replication_count():
     Determines the number of new foxes to create based on a discretized
     normal distribution.
     """
-    if sim_cfg.FOX_REPLICATION_SIGMA < 0.01:
-        return int(round(sim_cfg.FOX_REPLICATION_MEAN))
+    if sim_cfg.fox.replication_sigma < 0.01:
+        return int(round(sim_cfg.fox.replication_mean))
     
-    weights = np.exp(-0.5 * ((sim_cfg.FOX_REPLICATION_RANGE - sim_cfg.FOX_REPLICATION_MEAN) / sim_cfg.FOX_REPLICATION_SIGMA)**2)
+    weights = np.exp(-0.5 * ((sim_cfg.fox.replication_range - sim_cfg.fox.replication_mean) / sim_cfg.fox.replication_sigma)**2)
     probabilities = weights / np.sum(weights)
-    return np.random.choice(sim_cfg.FOX_REPLICATION_RANGE, p=probabilities)
+    return np.random.choice(sim_cfg.fox.replication_range, p=probabilities)
 
 def create_initial_agents():
     """Creates the initial set of agents."""
-    for _ in range(sim_cfg.INITIAL_RABBITS):
-        add_agent(AGENT_TYPE_RABBIT, np.random.randint(20, sim_cfg.FIELD_WIDTH - 20), np.random.randint(20, sim_cfg.FIELD_HEIGHT - 20))
-    for _ in range(sim_cfg.INITIAL_FOXES):
-        add_agent(AGENT_TYPE_FOX, np.random.randint(20, sim_cfg.FIELD_WIDTH - 20), np.random.randint(20, sim_cfg.FIELD_HEIGHT - 20))
+    for _ in range(sim_cfg.agent.initial_rabbits):
+        add_agent(AGENT_TYPE_RABBIT, np.random.randint(20, sim_cfg.field.width - 20), np.random.randint(20, sim_cfg.field.height - 20))
+    for _ in range(sim_cfg.agent.initial_foxes):
+        add_agent(AGENT_TYPE_FOX, np.random.randint(20, sim_cfg.field.width - 20), np.random.randint(20, sim_cfg.field.height - 20))
 
 
 def draw_agents(surface):
@@ -147,6 +172,7 @@ def draw_agents(surface):
 # --- Main Simulation ---
 def main():
     """Main function to run the simulation loop."""
+    setup_signal_handlers()
     global num_agents
     create_initial_agents()
 
@@ -175,15 +201,15 @@ def main():
             
             # Wall collisions
             hit_left_wall = active_agents[:, 0] < 0
-            hit_right_wall = active_agents[:, 0] > sim_cfg.FIELD_WIDTH
+            hit_right_wall = active_agents[:, 0] > sim_cfg.field.width
             hit_top_wall = active_agents[:, 1] < 0
-            hit_bottom_wall = active_agents[:, 1] > sim_cfg.FIELD_HEIGHT
+            hit_bottom_wall = active_agents[:, 1] > sim_cfg.field.height
 
             active_agents[hit_left_wall | hit_right_wall, 2] *= -1
             active_agents[hit_top_wall | hit_bottom_wall, 3] *= -1
             
-            np.clip(active_agents[:, 0], 0, sim_cfg.FIELD_WIDTH, out=active_agents[:, 0])
-            np.clip(active_agents[:, 1], 0, sim_cfg.FIELD_HEIGHT, out=active_agents[:, 1])
+            np.clip(active_agents[:, 0], 0, sim_cfg.field.width, out=active_agents[:, 0])
+            np.clip(active_agents[:, 1], 0, sim_cfg.field.height, out=active_agents[:, 1])
 
 
             # --- Agent Masks ---
@@ -191,17 +217,17 @@ def main():
             is_fox = ~is_rabbit
             
             # --- Natural Rabbit Replication ---
-            if sim_cfg.RABBIT_REPLICATION_PROB_PER_FRAME > 0:
+            if sim_cfg.rabbit.replication_prob_per_frame > 0:
                 num_rabbits = np.sum(is_rabbit)
-                replication_chance = np.random.rand(num_rabbits) < sim_cfg.RABBIT_REPLICATION_PROB_PER_FRAME
+                replication_chance = np.random.rand(num_rabbits) < sim_cfg.rabbit.replication_prob_per_frame
                 rabbits_that_replicated = active_agents[is_rabbit][replication_chance]
                 for r in rabbits_that_replicated:
                     add_agent(AGENT_TYPE_RABBIT, r[0], r[1])
 
             # --- Natural Fox Death ---
-            if sim_cfg.FOX_DEATH_PROB_PER_FRAME > 0:
+            if sim_cfg.fox.death_prob_per_frame > 0:
                 num_foxes = np.sum(is_fox)
-                death_chance = np.random.rand(num_foxes) < sim_cfg.FOX_DEATH_PROB_PER_FRAME
+                death_chance = np.random.rand(num_foxes) < sim_cfg.fox.death_prob_per_frame
                 fox_indices_to_remove = np.where(is_fox)[0][death_chance]
                 # Iterate backwards to not mess up indices while removing
                 for i in sorted(fox_indices_to_remove, reverse=True):
@@ -219,7 +245,7 @@ def main():
             if fox_pos.size > 0 and rabbit_pos.size > 0:
                 # Calculate pairwise distances efficiently
                 dist_matrix = np.sqrt(((fox_pos[:, np.newaxis, :] - rabbit_pos[np.newaxis, :, :])**2).sum(axis=2))
-                collisions = dist_matrix < sim_cfg.COLLISION_DISTANCE
+                collisions = dist_matrix < sim_cfg.collision.distance
                 
                 collided_fox_indices, collided_rabbit_indices = np.where(collisions)
                 
@@ -247,10 +273,13 @@ def main():
                np.sum(agents[:num_agents, 4] == AGENT_TYPE_FOX) == 0:
                 simulation_active = False
                 simulation_ended_naturally = True
+                log_shutdown("extinction")
                 print("Simulation over. Populations died out.")
+                if sim_cfg.simulation.close_on_extinction:
+                    running = False
 
         # --- Drawing ---
-        screen.fill(sim_cfg.FIELD_COLOR)
+        screen.fill(sim_cfg.field.color)
         draw_agents(screen)
         pygame.display.flip()
 
@@ -273,17 +302,18 @@ def main():
                 last_plot_update = current_time
 
         # --- Tick ---
-        clock.tick(sim_cfg.FPS)
+        clock.tick(sim_cfg.simulation.fps)
 
     # Log simulation data before quitting
     if simulation_ended_naturally:
         final_elapsed_time_sec = (pygame.time.get_ticks() - start_time) / 1000.0
         log_simulation_data(final_elapsed_time_sec, sim_cfg)
+    else:
+        log_shutdown("normal_exit")
 
     pygame.quit()
     win.close()
     app.quit()
-    sys.exit()
 
 
 if __name__ == '__main__':

@@ -1,57 +1,55 @@
-from dataclasses import dataclass, field
 import numpy as np
 
-@dataclass
-class SimConfig:
-    # --- Field Parameters ---
-    FIELD_WIDTH: int = 400
-    FIELD_HEIGHT: int = 400
-    FIELD_COLOR: tuple = (20, 20, 20)  # Dark Grey
+class Config:
+    def __init__(self):
+        self.field = self.Field()
+        self.simulation = self.Simulation()
+        self.agent = self.Agent()
+        self.fox = self.Fox()
+        self.rabbit = self.Rabbit()
+        self.collision = self.Collision()
 
-    # --- Simulation Parameters ---
-    FPS: int = 60
-    MAX_AGENTS: int = 5000  # Maximum number of agents allowed in the simulation
-
-    # --- Agent Initial Parameters ---
-    INITIAL_FOXES: int = 60
-    INITIAL_RABBITS: int = 160
-    # Speed is defined in pixels per second.
-    AGENT_SPEED_PIXELS_PER_SEC: float = 100.0
-
-    # --- Fox Replication (Collision-based) ---
-    # Governs the probabilistic replication of foxes upon eating a rabbit.
-    # The number of new foxes is chosen from a distribution with this mean.
-    FOX_REPLICATION_MEAN: float = 0.1
-
-    # A small sigma (e.g., 0.1) makes replication deterministic (always FOX_REPLICATION_MEAN).
-    # A large sigma (e.g., 5.0) makes replication more random.
-    FOX_REPLICATION_SIGMA: float = 6.5
-    # The possible outcomes for the number of new foxes (e.g., 0 to 8).
-    FOX_REPLICATION_RANGE: np.ndarray = field(default_factory=lambda: np.arange(0, 4))
-
-    # --- Natural Death (Time-based) ---
-    # The probability that a fox will die in any given frame, independent of other factors.
-    # A value of 0.001 means a 0.1% chance per frame.
-    FOX_DEATH_PROB_PER_FRAME: float = 0.005
-
-    # --- Rabbit Replication (Time-based) ---
-    # Each rabbit has a chance to produce this many offspring per minute, on average.
-    RABBIT_REPLICATION_RATE_PER_MIN: float = 14.0
-
-    # --- Collision Parameters ---
-    COLLISION_DISTANCE: int = 5  # in pixels
-
-    # --- Derived Constants (do not change directly) ---
-    AGENT_SPEED_PER_FRAME: float = field(init=False)
-    RABBIT_REPLICATION_PROB_PER_FRAME: float = field(init=False)
-
-    def __post_init__(self):
-        self.AGENT_SPEED_PER_FRAME = self.AGENT_SPEED_PIXELS_PER_SEC / self.FPS
-        if self.RABBIT_REPLICATION_RATE_PER_MIN > 0:
-            self.RABBIT_REPLICATION_PROB_PER_FRAME = (self.RABBIT_REPLICATION_RATE_PER_MIN / 60) / self.FPS
+        # Derived constants that depend on multiple sections
+        self.agent.speed_per_frame = self.agent.speed_pixels_per_sec / self.simulation.fps
+        if self.rabbit.replication_rate_per_min > 0:
+            self.rabbit.replication_prob_per_frame = (self.rabbit.replication_rate_per_min / 60) / self.simulation.fps
         else:
-            self.RABBIT_REPLICATION_PROB_PER_FRAME = 0
+            self.rabbit.replication_prob_per_frame = 0
 
+    class Field:
+        def __init__(self):
+            self.width = 600
+            self.height = 600
+            self.color = (20, 20, 20)  # Dark Grey
+
+    class Simulation:
+        def __init__(self):
+            self.fps = 60
+            self.max_agents = 5000  # Maximum number of agents allowed in the simulation
+            self.close_on_extinction = True
+
+    class Agent:
+        def __init__(self):
+            self.initial_foxes = 20
+            self.initial_rabbits = 160
+            self.speed_pixels_per_sec = 120.0
+            self.speed_per_frame = 0.0 # Placeholder, calculated in main Config __init__
+
+    class Fox:
+        def __init__(self):
+            self.replication_mean = 0
+            self.replication_sigma = 4.5
+            self.replication_range = np.arange(0, 3)
+            self.death_prob_per_frame = 0.005
+
+    class Rabbit:
+        def __init__(self):
+            self.replication_rate_per_min = 18.0
+            self.replication_prob_per_frame = 0.0 # Placeholder, calculated in main Config __init__
+
+    class Collision:
+        def __init__(self):
+            self.distance = 4  # in pixels
 
 # Create a global instance of the configuration
-sim_cfg = SimConfig()
+sim_cfg = Config()
