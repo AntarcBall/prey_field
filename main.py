@@ -152,6 +152,7 @@ def main():
 
     running = True
     simulation_active = True
+    simulation_ended_naturally = False
     start_time = pygame.time.get_ticks()
     last_plot_update = start_time
 
@@ -245,6 +246,7 @@ def main():
             if np.sum(agents[:num_agents, 4] == AGENT_TYPE_RABBIT) == 0 or \
                np.sum(agents[:num_agents, 4] == AGENT_TYPE_FOX) == 0:
                 simulation_active = False
+                simulation_ended_naturally = True
                 print("Simulation over. Populations died out.")
 
         # --- Drawing ---
@@ -274,8 +276,9 @@ def main():
         clock.tick(sim_cfg.FPS)
 
     # Log simulation data before quitting
-    final_elapsed_time_sec = (pygame.time.get_ticks() - start_time) / 1000.0
-    log_simulation_data(final_elapsed_time_sec, sim_cfg)
+    if simulation_ended_naturally:
+        final_elapsed_time_sec = (pygame.time.get_ticks() - start_time) / 1000.0
+        log_simulation_data(final_elapsed_time_sec, sim_cfg)
 
     pygame.quit()
     win.close()
