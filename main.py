@@ -15,7 +15,7 @@ AGENT_TYPE_FOX = 1
 # --- Simulation Logging ---
 LOG_FILE = "simulation_log.csv"
 
-def log_simulation_data(duration: float, config: Config):
+def log_simulation_data(duration: float, config: Config, prevailing_specie: str = None, prevailing_specie_count: int = None):
     """Logs simulation duration and configuration parameters to a CSV file."""
     fieldnames = []
     row_data = {}
@@ -37,26 +37,31 @@ def log_simulation_data(duration: float, config: Config):
     row_data['agent.initial_foxes'] = config.agent.initial_foxes
     row_data['agent.initial_rabbits'] = config.agent.initial_rabbits
     row_data['agent.speed_pixels_per_sec'] = config.agent.speed_pixels_per_sec
-    row_data['agent.speed_per_frame'] = config.agent.speed_per_frame
+    row_data['agent.speed_per_frame'] = round(config.agent.speed_per_frame, 5)
 
     # Fox parameters
-    fieldnames.extend(['fox.replication_mean', 'fox.replication_sigma', 'fox.replication_range', 'fox.death_prob_per_frame'])
+    fieldnames.extend(['fox.replication_mean', 'fox.replication_sigma', 'fox.replication_range', 'fox.death_prob_per_frame', 'fox.satiation_duration_frames'])
     row_data['fox.replication_mean'] = config.fox.replication_mean
     row_data['fox.replication_sigma'] = config.fox.replication_sigma
     row_data['fox.replication_range'] = str(config.fox.replication_range.tolist())
     row_data['fox.death_prob_per_frame'] = config.fox.death_prob_per_frame
+    row_data['fox.satiation_duration_frames'] = config.fox.satiation_duration_frames
 
     # Rabbit parameters
     fieldnames.extend(['rabbit.replication_rate_per_min', 'rabbit.replication_prob_per_frame'])
     row_data['rabbit.replication_rate_per_min'] = config.rabbit.replication_rate_per_min
-    row_data['rabbit.replication_prob_per_frame'] = config.rabbit.replication_prob_per_frame
+    row_data['rabbit.replication_prob_per_frame'] = round(config.rabbit.replication_prob_per_frame, 5)
 
     # Collision parameters
     fieldnames.extend(['collision.distance'])
     row_data['collision.distance'] = config.collision.distance
 
-    fieldnames.append("duration_seconds")
+    # Simulation results
+    fieldnames.extend(["duration_seconds", "prevailing_specie", "prevailing_specie_count"])
     row_data["duration_seconds"] = duration
+    row_data["prevailing_specie"] = prevailing_specie
+    row_data["prevailing_specie_count"] = prevailing_specie_count
+
 
     file_exists = os.path.isfile(LOG_FILE)
 
@@ -99,12 +104,12 @@ fox_counts = []
 rabbit_counts = []
 
 # --- Agent Data (NumPy Array) ---
-# [pos_x, pos_y, vel_x, vel_y, type, active]
-agents = np.zeros((sim_cfg.simulation.max_agents, 6), dtype=np.float32)
+# [pos_x, pos_y, vel_x, vel_y, type, active, satiation]
+agents = np.zeros((sim_cfg.simulation.max_agents, 7), dtype=np.float32)
 num_agents = 0
 
 # --- Simulation Functions ---
-def add_agent(agent_type, x, y):
+def add_agent(agent_type, x, y, satiation_level=0):
     """Adds a new agent to the simulation."""
     global num_agents
     if num_agents >= sim_cfg.simulation.max_agents:
@@ -117,6 +122,7 @@ def add_agent(agent_type, x, y):
     agents[num_agents, 3] = np.sin(angle) * sim_cfg.agent.speed_per_frame
     agents[num_agents, 4] = agent_type
     agents[num_agents, 5] = 1  # Active
+    agents[num_agents, 6] = satiation_level  # Satiation
     num_agents += 1
 
 def remove_agent(index):
@@ -161,12 +167,18 @@ def draw_agents(surface):
     for agent in active_agents[is_fox]:
         pos = agent[:2]
         vel = agent[2:4]
+        satiation = agent[6]
+        
+        color = (255, 100, 100)  # Default red
+        if satiation > 0:
+            color = (255, 165, 0) # Orange for satiated
+
         angle = np.arctan2(vel[1], vel[0])
         size = 8
         p1 = pos + np.array([np.cos(angle), np.sin(angle)]) * size
         p2 = pos + np.array([np.cos(angle + 2.5), np.sin(angle + 2.5)]) * size * 0.8
         p3 = pos + np.array([np.cos(angle - 2.5), np.sin(angle - 2.5)]) * size * 0.8
-        pygame.draw.polygon(surface, (255, 100, 100), [p1.tolist(), p2.tolist(), p3.tolist()])
+        pygame.draw.polygon(surface, color, [p1.tolist(), p2.tolist(), p3.tolist()])
 
 
 # --- Main Simulation ---
@@ -212,6 +224,12 @@ def main():
             np.clip(active_agents[:, 1], 0, sim_cfg.field.height, out=active_agents[:, 1])
 
 
+            # --- Fox Satiation Decay ---
+            is_fox_mask = active_agents[:, 4] == AGENT_TYPE_FOX
+            satiated_foxes_mask = is_fox_mask & (active_agents[:, 6] > 0)
+            active_agents[satiated_foxes_mask, 6] -= 1
+
+
             # --- Agent Masks ---
             is_rabbit = active_agents[:, 4] == AGENT_TYPE_RABBIT
             is_fox = ~is_rabbit
@@ -243,29 +261,34 @@ def main():
             rabbit_pos = active_agents[is_rabbit, :2]
             
             if fox_pos.size > 0 and rabbit_pos.size > 0:
-                # Calculate pairwise distances efficiently
                 dist_matrix = np.sqrt(((fox_pos[:, np.newaxis, :] - rabbit_pos[np.newaxis, :, :])**2).sum(axis=2))
                 collisions = dist_matrix < sim_cfg.collision.distance
                 
                 collided_fox_indices, collided_rabbit_indices = np.where(collisions)
                 
-                # Avoid multiple foxes eating the same rabbit in one frame
                 unique_collided_rabbits, unique_indices = np.unique(collided_rabbit_indices, return_index=True)
                 
                 if unique_collided_rabbits.size > 0:
-                    # Map original fox indices from the collision matrix
-                    colliding_fox_original_indices = np.where(is_fox)[0][collided_fox_indices[unique_indices]]
-                    # Map original rabbit indices
-                    rabbits_to_remove_original_indices = np.where(is_rabbit)[0][unique_collided_rabbits]
+                    rabbits_to_remove_indices = np.where(is_rabbit)[0][unique_collided_rabbits]
+                    
+                    # Use the first fox that collided with each unique rabbit
+                    colliding_fox_indices = np.where(is_fox)[0][collided_fox_indices[unique_indices]]
 
-                    # Add new foxes
-                    for i in colliding_fox_original_indices:
+                    # Filter for foxes that are not satiated
+                    hungry_fox_mask = agents[colliding_fox_indices, 6] == 0
+                    
+                    hungry_foxes_that_ate = colliding_fox_indices[hungry_fox_mask]
+                    rabbits_eaten_by_hungry_foxes = rabbits_to_remove_indices[hungry_fox_mask]
+
+                    # Add new foxes and update satiation
+                    for i in hungry_foxes_that_ate:
+                        agents[i, 6] = sim_cfg.fox.satiation_duration_frames
                         num_new_foxes = get_replication_count()
                         for _ in range(num_new_foxes):
-                            add_agent(AGENT_TYPE_FOX, agents[i, 0], agents[i, 1])
+                            add_agent(AGENT_TYPE_FOX, agents[i, 0], agents[i, 1], satiation_level=sim_cfg.fox.satiation_duration_frames)
                     
                     # Remove eaten rabbits (iterate backwards)
-                    for i in sorted(rabbits_to_remove_original_indices, reverse=True):
+                    for i in sorted(rabbits_eaten_by_hungry_foxes, reverse=True):
                         remove_agent(i)
 
             # Check for simulation end conditions
@@ -307,7 +330,21 @@ def main():
     # Log simulation data before quitting
     if simulation_ended_naturally:
         final_elapsed_time_sec = (pygame.time.get_ticks() - start_time) / 1000.0
-        log_simulation_data(final_elapsed_time_sec, sim_cfg)
+        
+        # Determine prevailing species
+        num_rabbits = np.sum(agents[:num_agents, 4] == AGENT_TYPE_RABBIT)
+        num_foxes = np.sum(agents[:num_agents, 4] == AGENT_TYPE_FOX)
+        
+        prevailing_specie = "None"
+        prevailing_specie_count = 0
+        if num_rabbits > 0:
+            prevailing_specie = "Rabbit"
+            prevailing_specie_count = num_rabbits
+        elif num_foxes > 0:
+            prevailing_specie = "Fox"
+            prevailing_specie_count = num_foxes
+            
+        log_simulation_data(final_elapsed_time_sec, sim_cfg, prevailing_specie, prevailing_specie_count)
     else:
         log_shutdown("normal_exit")
 
