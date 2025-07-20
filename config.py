@@ -26,7 +26,7 @@ class Config:
         def __init__(self):
             self.fps = 120
             self.max_agents = 5000  # Maximum number of agents allowed in the simulation
-            self.close_on_extinction = True
+            self.close_on_extinction = False
 
     class Agent:
         def __init__(self):

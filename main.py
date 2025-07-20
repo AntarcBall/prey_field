@@ -7,6 +7,15 @@ from PyQt5.QtWidgets import QApplication
 import pyqtgraph as pg
 from config import sim_cfg, Config
 from utils.logger import setup_signal_handlers, log_shutdown
+from control_window import ControlWindow
+
+# --- Global State ---
+simulation_paused = False
+
+def toggle_pause_simulation():
+    """Toggles the simulation's paused state."""
+    global simulation_paused
+    simulation_paused = not simulation_paused
 
 # --- Constants ---
 AGENT_TYPE_RABBIT = 0
@@ -188,6 +197,12 @@ def main():
     global num_agents
     create_initial_agents()
 
+    # --- Control Window Setup ---
+    control_win = ControlWindow()
+    control_win.show()
+    control_win.pause_toggled.connect(toggle_pause_simulation)
+    control_win.fps_changed.connect(lambda fps: setattr(sim_cfg.simulation, 'fps', fps))
+
     running = True
     simulation_active = True
     simulation_ended_naturally = False
@@ -200,10 +215,18 @@ def main():
                 running = False
         
         # Check if PyQtGraph window is closed
-        if not win.isVisible():
+        if not win.isVisible() and not control_win.isVisible():
             running = False
 
         app.processEvents()
+
+        if simulation_paused:
+            # When paused, still draw and tick, but don't update the simulation
+            screen.fill(sim_cfg.field.color)
+            draw_agents(screen)
+            pygame.display.flip()
+            clock.tick(sim_cfg.simulation.fps)
+            continue
 
         if simulation_active:
             active_agents = agents[:num_agents]
