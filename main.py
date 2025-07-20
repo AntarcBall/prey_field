@@ -111,6 +111,7 @@ def main():
     create_initial_agents()
 
     running = True
+    simulation_active = True
     start_time = pygame.time.get_ticks()
     last_plot_update = start_time
 
@@ -120,80 +121,86 @@ def main():
                 running = False
         app.processEvents()
 
-        active_agents = agents[:num_agents]
+        if simulation_active:
+            active_agents = agents[:num_agents]
 
-        # --- Agent Movement ---
-        active_agents[:, :2] += active_agents[:, 2:4]
-        
-        # Wall collisions
-        hit_left_wall = active_agents[:, 0] < 0
-        hit_right_wall = active_agents[:, 0] > sim_cfg.FIELD_WIDTH
-        hit_top_wall = active_agents[:, 1] < 0
-        hit_bottom_wall = active_agents[:, 1] > sim_cfg.FIELD_HEIGHT
-
-        active_agents[hit_left_wall | hit_right_wall, 2] *= -1
-        active_agents[hit_top_wall | hit_bottom_wall, 3] *= -1
-        
-        np.clip(active_agents[:, 0], 0, sim_cfg.FIELD_WIDTH, out=active_agents[:, 0])
-        np.clip(active_agents[:, 1], 0, sim_cfg.FIELD_HEIGHT, out=active_agents[:, 1])
-
-
-        # --- Agent Masks ---
-        is_rabbit = active_agents[:, 4] == AGENT_TYPE_RABBIT
-        is_fox = ~is_rabbit
-        
-        # --- Natural Rabbit Replication ---
-        if sim_cfg.RABBIT_REPLICATION_PROB_PER_FRAME > 0:
-            num_rabbits = np.sum(is_rabbit)
-            replication_chance = np.random.rand(num_rabbits) < sim_cfg.RABBIT_REPLICATION_PROB_PER_FRAME
-            rabbits_that_replicated = active_agents[is_rabbit][replication_chance]
-            for r in rabbits_that_replicated:
-                add_agent(AGENT_TYPE_RABBIT, r[0], r[1])
-
-        # --- Natural Fox Death ---
-        if sim_cfg.FOX_DEATH_PROB_PER_FRAME > 0:
-            num_foxes = np.sum(is_fox)
-            death_chance = np.random.rand(num_foxes) < sim_cfg.FOX_DEATH_PROB_PER_FRAME
-            fox_indices_to_remove = np.where(is_fox)[0][death_chance]
-            # Iterate backwards to not mess up indices while removing
-            for i in sorted(fox_indices_to_remove, reverse=True):
-                remove_agent(i)
-                
-        # --- Collision Detection ---
-        # Re-calculate masks after potential removals
-        active_agents = agents[:num_agents]
-        is_rabbit = active_agents[:, 4] == AGENT_TYPE_RABBIT
-        is_fox = ~is_rabbit
-        
-        fox_pos = active_agents[is_fox, :2]
-        rabbit_pos = active_agents[is_rabbit, :2]
-        
-        if fox_pos.size > 0 and rabbit_pos.size > 0:
-            # Calculate pairwise distances efficiently
-            dist_matrix = np.sqrt(((fox_pos[:, np.newaxis, :] - rabbit_pos[np.newaxis, :, :])**2).sum(axis=2))
-            collisions = dist_matrix < sim_cfg.COLLISION_DISTANCE
+            # --- Agent Movement ---
+            active_agents[:, :2] += active_agents[:, 2:4]
             
-            collided_fox_indices, collided_rabbit_indices = np.where(collisions)
-            
-            # Avoid multiple foxes eating the same rabbit in one frame
-            unique_collided_rabbits, unique_indices = np.unique(collided_rabbit_indices, return_index=True)
-            
-            if unique_collided_rabbits.size > 0:
-                # Map original fox indices from the collision matrix
-                colliding_fox_original_indices = np.where(is_fox)[0][collided_fox_indices[unique_indices]]
-                # Map original rabbit indices
-                rabbits_to_remove_original_indices = np.where(is_rabbit)[0][unique_collided_rabbits]
+            # Wall collisions
+            hit_left_wall = active_agents[:, 0] < 0
+            hit_right_wall = active_agents[:, 0] > sim_cfg.FIELD_WIDTH
+            hit_top_wall = active_agents[:, 1] < 0
+            hit_bottom_wall = active_agents[:, 1] > sim_cfg.FIELD_HEIGHT
 
-                # Add new foxes
-                for i in colliding_fox_original_indices:
-                    num_new_foxes = get_replication_count()
-                    for _ in range(num_new_foxes):
-                        add_agent(AGENT_TYPE_FOX, agents[i, 0], agents[i, 1])
-                
-                # Remove eaten rabbits (iterate backwards)
-                for i in sorted(rabbits_to_remove_original_indices, reverse=True):
+            active_agents[hit_left_wall | hit_right_wall, 2] *= -1
+            active_agents[hit_top_wall | hit_bottom_wall, 3] *= -1
+            
+            np.clip(active_agents[:, 0], 0, sim_cfg.FIELD_WIDTH, out=active_agents[:, 0])
+            np.clip(active_agents[:, 1], 0, sim_cfg.FIELD_HEIGHT, out=active_agents[:, 1])
+
+
+            # --- Agent Masks ---
+            is_rabbit = active_agents[:, 4] == AGENT_TYPE_RABBIT
+            is_fox = ~is_rabbit
+            
+            # --- Natural Rabbit Replication ---
+            if sim_cfg.RABBIT_REPLICATION_PROB_PER_FRAME > 0:
+                num_rabbits = np.sum(is_rabbit)
+                replication_chance = np.random.rand(num_rabbits) < sim_cfg.RABBIT_REPLICATION_PROB_PER_FRAME
+                rabbits_that_replicated = active_agents[is_rabbit][replication_chance]
+                for r in rabbits_that_replicated:
+                    add_agent(AGENT_TYPE_RABBIT, r[0], r[1])
+
+            # --- Natural Fox Death ---
+            if sim_cfg.FOX_DEATH_PROB_PER_FRAME > 0:
+                num_foxes = np.sum(is_fox)
+                death_chance = np.random.rand(num_foxes) < sim_cfg.FOX_DEATH_PROB_PER_FRAME
+                fox_indices_to_remove = np.where(is_fox)[0][death_chance]
+                # Iterate backwards to not mess up indices while removing
+                for i in sorted(fox_indices_to_remove, reverse=True):
                     remove_agent(i)
+                    
+            # --- Collision Detection ---
+            # Re-calculate masks after potential removals
+            active_agents = agents[:num_agents]
+            is_rabbit = active_agents[:, 4] == AGENT_TYPE_RABBIT
+            is_fox = ~is_rabbit
+            
+            fox_pos = active_agents[is_fox, :2]
+            rabbit_pos = active_agents[is_rabbit, :2]
+            
+            if fox_pos.size > 0 and rabbit_pos.size > 0:
+                # Calculate pairwise distances efficiently
+                dist_matrix = np.sqrt(((fox_pos[:, np.newaxis, :] - rabbit_pos[np.newaxis, :, :])**2).sum(axis=2))
+                collisions = dist_matrix < sim_cfg.COLLISION_DISTANCE
+                
+                collided_fox_indices, collided_rabbit_indices = np.where(collisions)
+                
+                # Avoid multiple foxes eating the same rabbit in one frame
+                unique_collided_rabbits, unique_indices = np.unique(collided_rabbit_indices, return_index=True)
+                
+                if unique_collided_rabbits.size > 0:
+                    # Map original fox indices from the collision matrix
+                    colliding_fox_original_indices = np.where(is_fox)[0][collided_fox_indices[unique_indices]]
+                    # Map original rabbit indices
+                    rabbits_to_remove_original_indices = np.where(is_rabbit)[0][unique_collided_rabbits]
 
+                    # Add new foxes
+                    for i in colliding_fox_original_indices:
+                        num_new_foxes = get_replication_count()
+                        for _ in range(num_new_foxes):
+                            add_agent(AGENT_TYPE_FOX, agents[i, 0], agents[i, 1])
+                    
+                    # Remove eaten rabbits (iterate backwards)
+                    for i in sorted(rabbits_to_remove_original_indices, reverse=True):
+                        remove_agent(i)
+
+            # Check for simulation end conditions
+            if np.sum(agents[:num_agents, 4] == AGENT_TYPE_RABBIT) == 0 or \
+               np.sum(agents[:num_agents, 4] == AGENT_TYPE_FOX) == 0:
+                simulation_active = False
+                print("Simulation over. Populations died out.")
 
         # --- Drawing ---
         screen.fill(sim_cfg.FIELD_COLOR)
@@ -217,15 +224,9 @@ def main():
             rabbit_curve.setData(time_points, rabbit_counts)
             last_plot_update = current_time
 
-        # --- Tick and Termination ---
+        # --- Tick ---
         clock.tick(sim_cfg.FPS)
-        if np.sum(agents[:num_agents, 4] == AGENT_TYPE_RABBIT) == 0 or \
-           np.sum(agents[:num_agents, 4] == AGENT_TYPE_FOX) == 0:
-            running = False
 
-    print("Simulation over. Closing in 5 seconds...")
-    pygame.time.wait(5000)
-    
     pygame.quit()
     win.close()
     app.quit()
