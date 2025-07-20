@@ -14,7 +14,7 @@ class SimConfig:
 
     # --- Agent Initial Parameters ---
     INITIAL_FOXES: int = 60
-    INITIAL_RABBITS: int = 60
+    INITIAL_RABBITS: int = 160
     # Speed is defined in pixels per second.
     AGENT_SPEED_PIXELS_PER_SEC: float = 65.0
 

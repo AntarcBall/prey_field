@@ -2,9 +2,46 @@ import pygame
 import numpy as np
 import sys
 import os
+import csv
 from PyQt5.QtWidgets import QApplication
 import pyqtgraph as pg
-from config import sim_cfg
+from config import sim_cfg, SimConfig
+
+# --- Constants ---
+AGENT_TYPE_RABBIT = 0
+AGENT_TYPE_FOX = 1
+
+# --- Simulation Logging ---
+LOG_FILE = "simulation_log.csv"
+
+def log_simulation_data(duration: float, config: SimConfig):
+    """Logs simulation duration and configuration parameters to a CSV file."""
+    fieldnames = []
+    row_data = {}
+
+    # Get all parameters from the SimConfig dataclass
+    for field_name in config.__dataclass_fields__:
+        # Exclude derived fields that are not initialized directly
+        if config.__dataclass_fields__[field_name].init:
+            fieldnames.append(field_name)
+            value = getattr(config, field_name)
+            if isinstance(value, np.ndarray):
+                row_data[field_name] = str(value.tolist())
+            else:
+                row_data[field_name] = value
+    
+    fieldnames.append("duration_seconds")
+    row_data["duration_seconds"] = duration
+
+    file_exists = os.path.isfile(LOG_FILE)
+
+    with open(LOG_FILE, 'a', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()  # Write header only if file is new
+        writer.writerow(row_data)
+
+
 
 # --- Constants ---
 AGENT_TYPE_RABBIT = 0
@@ -122,6 +159,11 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+        
+        # Check if PyQtGraph window is closed
+        if not win.isVisible():
+            running = False
+
         app.processEvents()
 
         if simulation_active:
@@ -230,6 +272,10 @@ def main():
 
         # --- Tick ---
         clock.tick(sim_cfg.FPS)
+
+    # Log simulation data before quitting
+    final_elapsed_time_sec = (pygame.time.get_ticks() - start_time) / 1000.0
+    log_simulation_data(final_elapsed_time_sec, sim_cfg)
 
     pygame.quit()
     win.close()
