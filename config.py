@@ -1,8 +1,8 @@
 import numpy as np
 
 # --- Field Parameters ---
-FIELD_WIDTH = 500
-FIELD_HEIGHT = 500
+FIELD_WIDTH = 400
+FIELD_HEIGHT = 400
 FIELD_COLOR = (20, 20, 20)  # Dark Grey
 
 # --- Simulation Parameters ---
@@ -17,23 +17,23 @@ AGENT_SPEED_PIXELS_PER_SEC = 65.0
 # --- Fox Replication (Collision-based) ---
 # Governs the probabilistic replication of foxes upon eating a rabbit.
 # The number of new foxes is chosen from a distribution with this mean.
-FOX_REPLICATION_MEAN = 5.5
+FOX_REPLICATION_MEAN = 0.1
 
 # A small sigma (e.g., 0.1) makes replication deterministic (always FOX_REPLICATION_MEAN).
 # A large sigma (e.g., 5.0) makes replication more random.
 FOX_REPLICATION_SIGMA = 6.5
 # The possible outcomes for the number of new foxes (e.g., 0 to 8).
-FOX_REPLICATION_RANGE = np.arange(0, 8)
+FOX_REPLICATION_RANGE = np.arange(0, 4)
 
 # --- Natural Death (Time-based) ---
 # The probability that a fox will die in any given frame, independent of other factors.
 # A value of 0.001 means a 0.1% chance per frame.
-FOX_DEATH_PROB_PER_FRAME = 0.006
+FOX_DEATH_PROB_PER_FRAME = 0.005
 
 
 # --- Rabbit Replication (Time-based) ---
 # Each rabbit has a chance to produce this many offspring per minute, on average.
-RABBIT_REPLICATION_RATE_PER_MIN = 9.0
+RABBIT_REPLICATION_RATE_PER_MIN = 14.0
 
 # --- Collision Parameters ---
 COLLISION_DISTANCE = 5  # in pixels
