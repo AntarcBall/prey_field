@@ -3,16 +3,15 @@ import numpy as np
 import sys
 from PyQt5.QtWidgets import QApplication
 import pyqtgraph as pg
-import config as cfg
+from config import sim_cfg
 
 # --- Constants ---
 AGENT_TYPE_RABBIT = 0
 AGENT_TYPE_FOX = 1
-MAX_AGENTS = 5000  # Maximum number of agents
 
 # --- Pygame Setup ---
 pygame.init()
-screen = pygame.display.set_mode((cfg.FIELD_WIDTH, cfg.FIELD_HEIGHT))
+screen = pygame.display.set_mode((sim_cfg.FIELD_WIDTH, sim_cfg.FIELD_HEIGHT))
 pygame.display.set_caption("Optimized Killing Field Simulation")
 clock = pygame.time.Clock()
 
@@ -36,21 +35,21 @@ rabbit_counts = []
 
 # --- Agent Data (NumPy Array) ---
 # [pos_x, pos_y, vel_x, vel_y, type, active]
-agents = np.zeros((MAX_AGENTS, 6), dtype=np.float32)
+agents = np.zeros((sim_cfg.MAX_AGENTS, 6), dtype=np.float32)
 num_agents = 0
 
 # --- Simulation Functions ---
 def add_agent(agent_type, x, y):
     """Adds a new agent to the simulation."""
     global num_agents
-    if num_agents >= MAX_AGENTS:
+    if num_agents >= sim_cfg.MAX_AGENTS:
         return
 
     agents[num_agents, 0] = x
     agents[num_agents, 1] = y
     angle = np.random.uniform(0, 2 * np.pi)
-    agents[num_agents, 2] = np.cos(angle) * cfg.AGENT_SPEED_PER_FRAME
-    agents[num_agents, 3] = np.sin(angle) * cfg.AGENT_SPEED_PER_FRAME
+    agents[num_agents, 2] = np.cos(angle) * sim_cfg.AGENT_SPEED_PER_FRAME
+    agents[num_agents, 3] = np.sin(angle) * sim_cfg.AGENT_SPEED_PER_FRAME
     agents[num_agents, 4] = agent_type
     agents[num_agents, 5] = 1  # Active
     num_agents += 1
@@ -68,19 +67,19 @@ def get_replication_count():
     Determines the number of new foxes to create based on a discretized
     normal distribution.
     """
-    if cfg.FOX_REPLICATION_SIGMA < 0.01:
-        return int(round(cfg.FOX_REPLICATION_MEAN))
+    if sim_cfg.FOX_REPLICATION_SIGMA < 0.01:
+        return int(round(sim_cfg.FOX_REPLICATION_MEAN))
     
-    weights = np.exp(-0.5 * ((cfg.FOX_REPLICATION_RANGE - cfg.FOX_REPLICATION_MEAN) / cfg.FOX_REPLICATION_SIGMA)**2)
+    weights = np.exp(-0.5 * ((sim_cfg.FOX_REPLICATION_RANGE - sim_cfg.FOX_REPLICATION_MEAN) / sim_cfg.FOX_REPLICATION_SIGMA)**2)
     probabilities = weights / np.sum(weights)
-    return np.random.choice(cfg.FOX_REPLICATION_RANGE, p=probabilities)
+    return np.random.choice(sim_cfg.FOX_REPLICATION_RANGE, p=probabilities)
 
 def create_initial_agents():
     """Creates the initial set of agents."""
-    for _ in range(cfg.INITIAL_RABBITS):
-        add_agent(AGENT_TYPE_RABBIT, np.random.randint(20, cfg.FIELD_WIDTH - 20), np.random.randint(20, cfg.FIELD_HEIGHT - 20))
-    for _ in range(cfg.INITIAL_FOXES):
-        add_agent(AGENT_TYPE_FOX, np.random.randint(20, cfg.FIELD_WIDTH - 20), np.random.randint(20, cfg.FIELD_HEIGHT - 20))
+    for _ in range(sim_cfg.INITIAL_RABBITS):
+        add_agent(AGENT_TYPE_RABBIT, np.random.randint(20, sim_cfg.FIELD_WIDTH - 20), np.random.randint(20, sim_cfg.FIELD_HEIGHT - 20))
+    for _ in range(sim_cfg.INITIAL_FOXES):
+        add_agent(AGENT_TYPE_FOX, np.random.randint(20, sim_cfg.FIELD_WIDTH - 20), np.random.randint(20, sim_cfg.FIELD_HEIGHT - 20))
 
 
 def draw_agents(surface):
@@ -128,15 +127,15 @@ def main():
         
         # Wall collisions
         hit_left_wall = active_agents[:, 0] < 0
-        hit_right_wall = active_agents[:, 0] > cfg.FIELD_WIDTH
+        hit_right_wall = active_agents[:, 0] > sim_cfg.FIELD_WIDTH
         hit_top_wall = active_agents[:, 1] < 0
-        hit_bottom_wall = active_agents[:, 1] > cfg.FIELD_HEIGHT
+        hit_bottom_wall = active_agents[:, 1] > sim_cfg.FIELD_HEIGHT
 
         active_agents[hit_left_wall | hit_right_wall, 2] *= -1
         active_agents[hit_top_wall | hit_bottom_wall, 3] *= -1
         
-        np.clip(active_agents[:, 0], 0, cfg.FIELD_WIDTH, out=active_agents[:, 0])
-        np.clip(active_agents[:, 1], 0, cfg.FIELD_HEIGHT, out=active_agents[:, 1])
+        np.clip(active_agents[:, 0], 0, sim_cfg.FIELD_WIDTH, out=active_agents[:, 0])
+        np.clip(active_agents[:, 1], 0, sim_cfg.FIELD_HEIGHT, out=active_agents[:, 1])
 
 
         # --- Agent Masks ---
@@ -144,17 +143,17 @@ def main():
         is_fox = ~is_rabbit
         
         # --- Natural Rabbit Replication ---
-        if cfg.RABBIT_REPLICATION_PROB_PER_FRAME > 0:
+        if sim_cfg.RABBIT_REPLICATION_PROB_PER_FRAME > 0:
             num_rabbits = np.sum(is_rabbit)
-            replication_chance = np.random.rand(num_rabbits) < cfg.RABBIT_REPLICATION_PROB_PER_FRAME
+            replication_chance = np.random.rand(num_rabbits) < sim_cfg.RABBIT_REPLICATION_PROB_PER_FRAME
             rabbits_that_replicated = active_agents[is_rabbit][replication_chance]
             for r in rabbits_that_replicated:
                 add_agent(AGENT_TYPE_RABBIT, r[0], r[1])
 
         # --- Natural Fox Death ---
-        if cfg.FOX_DEATH_PROB_PER_FRAME > 0:
+        if sim_cfg.FOX_DEATH_PROB_PER_FRAME > 0:
             num_foxes = np.sum(is_fox)
-            death_chance = np.random.rand(num_foxes) < cfg.FOX_DEATH_PROB_PER_FRAME
+            death_chance = np.random.rand(num_foxes) < sim_cfg.FOX_DEATH_PROB_PER_FRAME
             fox_indices_to_remove = np.where(is_fox)[0][death_chance]
             # Iterate backwards to not mess up indices while removing
             for i in sorted(fox_indices_to_remove, reverse=True):
@@ -172,7 +171,7 @@ def main():
         if fox_pos.size > 0 and rabbit_pos.size > 0:
             # Calculate pairwise distances efficiently
             dist_matrix = np.sqrt(((fox_pos[:, np.newaxis, :] - rabbit_pos[np.newaxis, :, :])**2).sum(axis=2))
-            collisions = dist_matrix < cfg.COLLISION_DISTANCE
+            collisions = dist_matrix < sim_cfg.COLLISION_DISTANCE
             
             collided_fox_indices, collided_rabbit_indices = np.where(collisions)
             
@@ -197,7 +196,7 @@ def main():
 
 
         # --- Drawing ---
-        screen.fill(cfg.FIELD_COLOR)
+        screen.fill(sim_cfg.FIELD_COLOR)
         draw_agents(screen)
         pygame.display.flip()
 
@@ -219,7 +218,7 @@ def main():
             last_plot_update = current_time
 
         # --- Tick and Termination ---
-        clock.tick(cfg.FPS)
+        clock.tick(sim_cfg.FPS)
         if np.sum(agents[:num_agents, 4] == AGENT_TYPE_RABBIT) == 0 or \
            np.sum(agents[:num_agents, 4] == AGENT_TYPE_FOX) == 0:
             running = False
